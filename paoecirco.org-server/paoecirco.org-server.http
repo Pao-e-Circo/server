@@ -1,0 +1,6 @@
+@paoecirco.org_server_HostAddress = http://localhost:5294
+
+GET {{paoecirco.org_server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
