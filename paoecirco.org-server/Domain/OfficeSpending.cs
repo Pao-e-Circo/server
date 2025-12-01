@@ -26,9 +26,12 @@ namespace paoecirco.org_server.Domain
         public decimal HotelRate { get; init; }
         [Column("gasoline")]
         public decimal Gasoline { get; init; }
-        public required Councilour Councilour { get; init; }
+        public required Councilour Councilor { get; init; }
 
         public OfficeSpendingResponse ToResponse()
             => new(Id, CouncilorId, Month, Materials, MobilePhone, FixedPhone, Paper, AirlineTickets, HotelRate, Gasoline);
+
+        internal decimal TotalSpent() 
+            => Materials + MobilePhone + FixedPhone + Paper + AirlineTickets + HotelRate + Gasoline;
     }
 }

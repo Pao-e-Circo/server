@@ -8,13 +8,13 @@ namespace paoecirco.org_server.Domain
     {
         [Column("id")]
         public Guid Id { get; init; }
-        [Column("councilour_id")]
+        [Column("councilor_id")]
         public Guid CouncilorId { get; init; }
         [Column("month")]
-        public required string Month { get; init; }
+        public required DateOnly Month { get; init; }
         [Column("status")]
         public required string Status { get; init; }
-        public required Councilour Councilour { get; init; }
+        public required Councilour Councilor { get; init; }
 
         public AttendenceResponse ToResponse()
             => new(Id, CouncilorId, Month, Status);

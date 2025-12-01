@@ -38,15 +38,15 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger";
 });
 
-#region Councilours Domain
-app.MapGet("/councilours", async (PostgresDbContext context) =>
+#region Councilors Domain
+app.MapGet("/councilors", async (PostgresDbContext context) =>
 {
     var councilours = await context.Councilours.ToListAsync();
     return Results.Ok(councilours.Select(x => x.ToResponse()));
 })
 .WithTags("Vereadores");
 
-app.MapGet("/councilours/{id}", async (PostgresDbContext context, [FromRoute] Guid id) =>
+app.MapGet("/councilors/{id}", async (PostgresDbContext context, [FromRoute] Guid id) =>
 {
     var councilour = await context.Councilours.Where(x => x.Id == id).FirstOrDefaultAsync();
 
@@ -89,6 +89,51 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, [From
     return Results.Ok(attendencesForCouncilor.ToResponse());
 })
 .WithTags("Presenças de sessões extraordinárias e ordinárias");
+#endregion
+
+#region Other
+app.MapGet("home", async (PostgresDbContext context) =>
+{
+    string Attendence = "PRESENTE";
+    int lastMonth = DateTime.Now.Month - 2;
+
+    var attendencesThisMonth = (await context.Attendences
+        .Where(x => x.Month.Month == lastMonth).ToListAsync())
+        .GroupBy(x => x.CouncilorId)
+        .Select(x => x.ToArray());
+
+    var officeSpendingsThisMonth = (await context.OfficeSpendings
+        .Where(x => x.Month.Month == lastMonth).ToListAsync())
+        .GroupBy(x => x.CouncilorId)
+        .Select(x => x.ToArray());
+
+    Dictionary<Guid, (int Attendences, int Absences, decimal OfficeSpending)> variablesToCalculate = [];
+
+    foreach (var i in attendencesThisMonth)
+    {
+        if (variablesToCalculate.ContainsKey(i.First().CouncilorId))
+            continue;
+
+        Guid councilorId = i.First().CouncilorId;
+        int attendences = i.Length;
+        int absences = i.Where(x => x.Status != Attendence).Count();
+
+        decimal officeSpending = 0;
+
+        foreach (var u in officeSpendingsThisMonth)
+        {
+            if (!u.Any(x => x.CouncilorId == councilorId))
+                continue;
+
+            officeSpending = u.Sum(x => x.TotalSpent());
+        }
+
+        variablesToCalculate.Add(councilorId, (attendences, absences, officeSpending));
+    }
+
+    return Results.Ok();
+})
+.WithTags("Destaques do mês");
 #endregion
 
 app.Run();
