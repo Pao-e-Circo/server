@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
+using paoecirco.org_server.Domain;
+using paoecirco.org_server.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -95,10 +97,12 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, [From
 app.MapGet("home", async (PostgresDbContext context) =>
 {
     string Attendence = "PRESENTE";
-    int lastMonth = DateTime.Now.Month - 2;
+    int lastMonth = DateTime.Now.Month - 2; // TODO alterar pra pegar sempre o último mês na base, pois pode acontecer de não ter dados do mês anterior.
 
-    var attendencesThisMonth = (await context.Attendences
-        .Where(x => x.Month.Month == lastMonth).ToListAsync())
+    var allAttendences = await context.Attendences
+        .Where(x => x.Month.Month == lastMonth).Include(x => x.Councilor).ToListAsync();
+
+    var attendencesGroupedByCouncilors = allAttendences
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
@@ -109,29 +113,46 @@ app.MapGet("home", async (PostgresDbContext context) =>
 
     Dictionary<Guid, (int Attendences, int Absences, decimal OfficeSpending)> variablesToCalculate = [];
 
-    foreach (var i in attendencesThisMonth)
+    foreach (var i in attendencesGroupedByCouncilors)
     {
         if (variablesToCalculate.ContainsKey(i.First().CouncilorId))
             continue;
 
         Guid councilorId = i.First().CouncilorId;
-        int attendences = i.Length;
+        int attendences = i.Where(x => x.Status == Attendence).Count();
         int absences = i.Where(x => x.Status != Attendence).Count();
 
         decimal officeSpending = 0;
 
         foreach (var u in officeSpendingsThisMonth)
         {
-            if (!u.Any(x => x.CouncilorId == councilorId))
+            if (u.First().CouncilorId != councilorId)
                 continue;
 
             officeSpending = u.Sum(x => x.TotalSpent());
+            break;
         }
 
         variablesToCalculate.Add(councilorId, (attendences, absences, officeSpending));
     }
 
-    return Results.Ok();
+    var councilors = attendencesGroupedByCouncilors.Select(x => x.First().Councilor);
+
+    IEnumerable<CouncilorHome> ranked = variablesToCalculate
+        .Rank(councilors)
+        .Select(x => x.ToCouncilorHome(x.OfficeSpendings.Sum(x => x.TotalSpent())));
+
+    HomeResponse response = new()
+    {
+        MonthHighlight = new()
+        {
+            TheColeest = ranked.First(),
+            TheSpender = ranked.ElementAt(ranked.Count() - 1)
+        },
+        Rank = ranked
+    };
+
+    return Results.Ok(response);
 })
 .WithTags("Destaques do mês");
 #endregion

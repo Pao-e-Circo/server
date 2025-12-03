@@ -3,7 +3,7 @@
     public class HomeResponse
     {
         public required MonthHighlight MonthHighlight { get; init; }
-        public IReadOnlyCollection<CouncilorHome> Rank { get; } = [];
+        public required IEnumerable<CouncilorHome> Rank { get; init; }
     }
 
     public class MonthHighlight

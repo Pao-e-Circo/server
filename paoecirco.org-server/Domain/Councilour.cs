@@ -23,5 +23,8 @@ namespace paoecirco.org_server.Domain
 
         public CounciloursResponse ToResponse() 
             => new(Id, Name, Phone, Email, PhotoUrl, Party);
+
+        public CouncilorHome ToCouncilorHome(decimal officeExpenseThisMonth)
+            => new() { Name = Name, Phone = Phone, PhotoUrl = PhotoUrl, PoliticalParty = Party, OfficeExpenseThisMonth = officeExpenseThisMonth };
     }
 }
