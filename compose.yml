@@ -20,7 +20,7 @@ services:
     depends_on:
       - database
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=Release
 
 volumes:
   pgdata: {}
