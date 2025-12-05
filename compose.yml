@@ -1,0 +1,26 @@
+services:
+  database:
+    container_name: paoecirco
+    image: postgres:12
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=paoecirco.org
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  api:
+    container_name: paoecirco.org-server
+    build:
+      context: paoecirco.org-server
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - database
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+
+volumes:
+  pgdata: {}

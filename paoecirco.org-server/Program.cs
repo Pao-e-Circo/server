@@ -2,13 +2,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
-using paoecirco.org_server.Domain;
 using paoecirco.org_server.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<PostgresDbContext>(options => options.UseNpgsql(
-    builder.Configuration.GetConnectionString("DatabaseCredentials")
+    builder.Configuration.GetConnectionString("DatabaseCredentials"), npgsql =>
+    {
+        npgsql.EnableRetryOnFailure(
+            maxRetryCount: 10,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorCodesToAdd: null
+        );
+    }
 ));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -26,7 +32,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
 }
 
 app.UseSwagger(c =>
@@ -39,6 +45,10 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "paoecirco.org API V1");
     c.RoutePrefix = "swagger";
 });
+
+app.MapGet("/health", () => Results.Ok("Healthy!!! :)"))
+.WithTags("Health");
+
 
 #region Councilors Domain
 app.MapGet("/councilors", async (PostgresDbContext context) =>
