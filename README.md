@@ -12,7 +12,7 @@ A execução da aplicação pode ser feita através do Docker. Para isso, certif
    $ cd server/
    ```
    
-3. Execute a aplicação através do Docker Compose na raíz do projeto:
+3. Execute a aplicação através do Docker Compose na raíz do projeto, [utilizando esse .yaml](https://github.com/Pao-e-Circo/server/blob/bf47516c771bd33f0e7a9812a3b95d8e0f7bc90a/compose.yml):
 
    ```
    $ docker compose -f compose.yml up -d
