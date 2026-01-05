@@ -21,7 +21,7 @@ services:
       VIRTUAL_HOST: paoecirco.org
       VIRTUAL_PORT: 8080
       LETSENCRYPT_HOST: paoecirco.org
-      LETSENCRYPT_EMAIL: seu-email@dominio.com
+      LETSENCRYPT_EMAIL: ritexil602@cucadas.com
 
   nginx-proxy:
     image: jwilder/nginx-proxy
