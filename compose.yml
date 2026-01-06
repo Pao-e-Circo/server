@@ -30,9 +30,9 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
-      - ./vhost.d:/etc/nginx/vhost.d
-      - ./html:/usr/share/nginx/html
-      - ./certs:/etc/nginx/certs
+      - /opt/nginx-proxy/vhost.d:/etc/nginx/vhost.d
+      - /opt/nginx-proxy/html:/usr/share/nginx/html
+      - /opt/nginx-proxy/certs:/etc/nginx/certs
 
   letsencrypt-nginx:
     image: jrcs/letsencrypt-nginx-proxy-companion
@@ -43,9 +43,9 @@ services:
       NGINX_PROXY_CONTAINER: nginx-proxy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./certs:/etc/nginx/certs
-      - ./vhost.d:/etc/nginx/vhost.d
-      - ./html:/usr/share/nginx/html
+      - /opt/nginx-proxy/certs:/etc/nginx/certs
+      - /opt/nginx-proxy/vhost.d:/etc/nginx/vhost.d
+      - /opt/nginx-proxy/html:/usr/share/nginx/html
 
 volumes:
   pgdata:
