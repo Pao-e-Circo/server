@@ -7,6 +7,10 @@ services:
       POSTGRES_DB: paoecirco.org
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      server_default:
+        aliases:
+          - postgres
 
   api:
     build:
@@ -20,11 +24,15 @@ services:
       VIRTUAL_PORT: 8080
       LETSENCRYPT_HOST: api.paoecirco.org
       LETSENCRYPT_EMAIL: ritexil602@cucadas.com
+    networks:
+      - server_default
 
   nginx-proxy:
     image: jwilder/nginx-proxy
     container_name: nginx-proxy
     restart: always
+    networks:
+      - server_default
     ports:
       - "80:80"
       - "443:443"
@@ -37,6 +45,8 @@ services:
   letsencrypt-nginx:
     image: jrcs/letsencrypt-nginx-proxy-companion
     restart: always
+    networks:
+      - server_default
     depends_on:
       - nginx-proxy
     environment:
@@ -49,3 +59,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  server_default:
+    external: true
