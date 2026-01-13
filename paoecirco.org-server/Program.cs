@@ -107,17 +107,24 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, [From
 app.MapGet("home", async (PostgresDbContext context) =>
 {
     string Attendence = "PRESENTE";
-    int lastMonth = DateTime.Now.Month - 2; // TODO alterar pra pegar sempre o último mês na base, pois pode acontecer de não ter dados do mês anterior.
+
+    DateOnly lastMonthProcessed = await context.Attendences
+        .OrderByDescending(x => x.Month)
+        .Select(x => x.Month)
+        .FirstOrDefaultAsync();
+
+    if (lastMonthProcessed == default)
+        return Results.NoContent();
 
     var allAttendences = await context.Attendences
-        .Where(x => x.Month.Month == lastMonth).Include(x => x.Councilor).ToListAsync();
+        .Where(x => x.Month == lastMonthProcessed).Include(x => x.Councilor).ToListAsync();
 
     var attendencesGroupedByCouncilors = allAttendences
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
     var officeSpendingsThisMonth = (await context.OfficeSpendings
-        .Where(x => x.Month.Month == lastMonth).ToListAsync())
+        .Where(x => x.Month == lastMonthProcessed).ToListAsync())
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
