@@ -1,26 +1,65 @@
 services:
   database:
-    container_name: paoecirco
     image: postgres:12
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=paoecirco.org
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: paoecirco.org
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      server_default:
+        aliases:
+          - postgres
+
   api:
-    container_name: paoecirco.org-server
     build:
       context: paoecirco.org-server
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
     depends_on:
       - database
     environment:
-      - ASPNETCORE_ENVIRONMENT=Release
+      ASPNETCORE_ENVIRONMENT: Release
+      VIRTUAL_HOST: api.paoecirco.org
+      VIRTUAL_PORT: 8080
+      LETSENCRYPT_HOST: api.paoecirco.org
+      LETSENCRYPT_EMAIL: ritexil602@cucadas.com
+    networks:
+      - server_default
+
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    restart: always
+    networks:
+      - server_default
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - /opt/nginx-proxy/vhost.d:/etc/nginx/vhost.d
+      - /opt/nginx-proxy/html:/usr/share/nginx/html
+      - /opt/nginx-proxy/certs:/etc/nginx/certs
+
+  letsencrypt-nginx:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    restart: always
+    networks:
+      - server_default
+    depends_on:
+      - nginx-proxy
+    environment:
+      NGINX_PROXY_CONTAINER: nginx-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/nginx-proxy/certs:/etc/nginx/certs
+      - /opt/nginx-proxy/vhost.d:/etc/nginx/vhost.d
+      - /opt/nginx-proxy/html:/usr/share/nginx/html
 
 volumes:
-  pgdata: {}
+  pgdata:
+
+networks:
+  server_default:
+    external: true
