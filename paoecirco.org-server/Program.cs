@@ -68,6 +68,51 @@ app.MapGet("/councilors/{id}", async (PostgresDbContext context, [FromRoute] Gui
     return Results.Ok(councilour.ToResponse());
 })
 .WithTags("Vereadores");
+
+app.MapGet("/councilors:spending-rank", async (PostgresDbContext context) =>
+{
+    int lastMonthProcessed = await context.Attendences
+        .OrderByDescending(x => x.Month)
+        .Select(x => x.Month.Month)
+        .FirstOrDefaultAsync();
+
+    var lastMonthSpending = await context.OfficeSpendings
+        .Where(x => x.Month.Month == lastMonthProcessed)
+        .Include(x => x.Councilor)
+        .ToListAsync();
+
+    var first = lastMonthSpending.OrderBy(x => x.TotalSpent()).First();
+
+    var councilorsWithSameFirstPlaceValue = lastMonthSpending.Where(x => x.TotalSpent() == first.TotalSpent());
+
+    var last = lastMonthSpending.OrderByDescending(x => x.TotalSpent()).First();
+
+    List<CouncilorsSpendingRankResponse> response = [];
+
+    foreach (var i in councilorsWithSameFirstPlaceValue)
+    {
+        response.Add(new(i.Councilor.Id,
+            i.Councilor.Name,
+            i.Councilor.Phone,
+            i.Councilor.Email,
+            i.Councilor.PhotoUrl,
+            i.Councilor.Party,
+            i.TotalSpent(),
+            Winner: true));
+    }
+
+    response.Add(new(last.Councilor.Id,
+            last.Councilor.Name,
+            last.Councilor.Phone,
+            last.Councilor.Email,
+            last.Councilor.PhotoUrl,
+            last.Councilor.Party,
+            last.TotalSpent(),
+            Winner: false));
+
+    return Results.Ok(response);
+})
+.WithTags("Vereadores");
 #endregion
 
 #region OfficeSpending Domain
@@ -108,23 +153,23 @@ app.MapGet("home", async (PostgresDbContext context) =>
 {
     string Attendence = "PRESENTE";
 
-    DateOnly lastMonthProcessed = await context.Attendences
+    int lastMonthProcessed = await context.Attendences
         .OrderByDescending(x => x.Month)
-        .Select(x => x.Month)
+        .Select(x => x.Month.Month)
         .FirstOrDefaultAsync();
 
     if (lastMonthProcessed == default)
         return Results.NoContent();
 
     var allAttendences = await context.Attendences
-        .Where(x => x.Month == lastMonthProcessed).Include(x => x.Councilor).ToListAsync();
+        .Where(x => x.Month.Month == lastMonthProcessed).Include(x => x.Councilor).ToListAsync();
 
     var attendencesGroupedByCouncilors = allAttendences
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
     var officeSpendingsThisMonth = (await context.OfficeSpendings
-        .Where(x => x.Month == lastMonthProcessed).ToListAsync())
+        .Where(x => x.Month.Month == lastMonthProcessed).ToListAsync())
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
