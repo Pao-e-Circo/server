@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
 using paoecirco.org_server.Responses;
@@ -26,6 +27,8 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 });
+
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
@@ -149,27 +152,41 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, [From
 #endregion
 
 #region Other
-app.MapGet("home", async (PostgresDbContext context) =>
+app.MapGet("home", async (PostgresDbContext context,
+    IMemoryCache cache,
+    [FromQuery] int? requestYear,
+    [FromQuery] int? requestMonth) =>
 {
-    string Attendence = "PRESENTE";
+    const string CachingKey = "HomeResponseCache";
+    int month = default;
 
-    int lastMonthProcessed = await context.Attendences
-        .OrderByDescending(x => x.Month)
-        .Select(x => x.Month.Month)
-        .FirstOrDefaultAsync();
+    if (requestYear is not null && requestMonth is not null)
+        month = await context.Attendences
+            .Where(x => x.Month.Month == requestMonth && x.Month.Year == requestYear)
+            .Select(x => x.Month.Month)
+            .FirstOrDefaultAsync();
+    else
+    {
+        cache.TryGetValue(CachingKey, out HomeResponse? cached);
 
-    if (lastMonthProcessed == default)
+        if (cached is not null)
+            return Results.Ok(cached);
+
+        month = (await GetMonthForRankingProcessing(context, cache)).OrderByDescending(x => x.Month).Select(x => x.Month).First();
+    }
+
+    if (month == default)
         return Results.NoContent();
 
     var allAttendences = await context.Attendences
-        .Where(x => x.Month.Month == lastMonthProcessed).Include(x => x.Councilor).ToListAsync();
+        .Where(x => x.Month.Month == month).Include(x => x.Councilor).ToListAsync();
 
     var attendencesGroupedByCouncilors = allAttendences
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
     var officeSpendingsThisMonth = (await context.OfficeSpendings
-        .Where(x => x.Month.Month == lastMonthProcessed).ToListAsync())
+        .Where(x => x.Month.Month == month).ToListAsync())
         .GroupBy(x => x.CouncilorId)
         .Select(x => x.ToArray());
 
@@ -181,8 +198,8 @@ app.MapGet("home", async (PostgresDbContext context) =>
             continue;
 
         Guid councilorId = i.First().CouncilorId;
-        int attendences = i.Where(x => x.Status == Attendence).Count();
-        int absences = i.Where(x => x.Status != Attendence).Count();
+        int attendences = i.Where(x => x.Status == "PRESENTE").Count();
+        int absences = i.Where(x => x.Status != "PRESENTE").Count();
 
         decimal officeSpending = 0;
 
@@ -214,9 +231,80 @@ app.MapGet("home", async (PostgresDbContext context) =>
         Rank = ranked
     };
 
+    cache.Set(CachingKey, response, TimeSpan.FromHours(6));
+
     return Results.Ok(response);
 })
 .WithTags("Destaques do mês");
+
+app.MapGet("/councilors:ranking-dropdown", async (PostgresDbContext context, IMemoryCache cache) =>
+{
+    var dates = await GetMonthForRankingProcessing(context, cache);
+
+    CouncilorsRankingDropdown response = new()
+    {
+        Items = dates
+            .OrderByDescending(x => x)
+            .Select(dateOnly => new CouncilorsRankingDropdownItem(dateOnly))
+            .ToList()
+    };
+
+    return Results.Ok(response);
+})
+.WithTags("Destaques do mês");
+#endregion
+
+#region Services methods
+async Task<IList<DateOnly>> GetMonthForRankingProcessing(PostgresDbContext context, IMemoryCache cache)
+{
+    const string CachingKey = "MonthsForRankingProcessing";
+
+    cache.TryGetValue(CachingKey, out IList<DateOnly>? cachedMonths);
+    if (cachedMonths is not null) return cachedMonths;
+
+    int lastYear = DateTime.UtcNow.Year - 1;
+
+    var attendencesProcessedThisYear = await context.Attendences
+        .Where(x => x.Month.Year == lastYear)
+        .Select(x => x.Month.Month)
+        .Distinct()
+        .OrderBy(x => x)
+        .ToListAsync();
+
+    var officesSpendingsProcessedThisYear = await context.OfficeSpendings
+        .Where(x => x.Month.Year == lastYear)
+        .Select(x => x.Month.Month)
+        .Distinct()
+        .OrderBy(x => x)
+        .ToListAsync();
+
+    // Pode acontecer de ter meses processados nas sessões, mas não nos gastos de gabinete - e vice versa.
+    bool hasMoreAttendencesThanSpendings = attendencesProcessedThisYear.Count > officesSpendingsProcessedThisYear.Count;
+    IList<DateOnly> dates = [];
+
+    if (hasMoreAttendencesThanSpendings)
+    {
+        dates = await context.OfficeSpendings
+            .Where(x => x.Month.Year == lastYear)
+            .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync();
+    }
+    else
+    {
+        dates = await context.Attendences
+            .Where(x => x.Month.Year == lastYear)
+            .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync();
+    }
+
+    cache.Set(CachingKey, dates, TimeSpan.FromHours(12));
+
+    return dates;
+}
 #endregion
 
 app.Run();
