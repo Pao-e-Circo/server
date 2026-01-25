@@ -7,6 +7,17 @@ using paoecirco.org_server.Responses;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontPolicy", policy =>
+    {
+        policy
+            .WithOrigins("https://www.paoecirco.org")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 builder.Services.AddDbContext<PostgresDbContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("DatabaseCredentials"), npgsql =>
     {
@@ -31,6 +42,7 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddMemoryCache();
 
 var app = builder.Build();
+app.UseCors("FrontPolicy");
 
 using (var scope = app.Services.CreateScope())
 {
@@ -126,14 +138,33 @@ app.MapGet("/office-spendings", async (PostgresDbContext context) =>
 })
 .WithTags("Despesas de Gabinete");
 
-app.MapGet("/office-spendings/{councilor_id}", async (PostgresDbContext context, [FromRoute(Name = "councilor_id")] Guid councilorId) =>
+app.MapGet("/office-spendings/{councilor_id}", async (PostgresDbContext context,
+    [FromRoute(Name = "councilor_id")] Guid councilorId,
+    [FromQuery] int? requestYear,
+    [FromQuery] int? requestMonth) =>
 {
-    var officeSpendingsForCouncilor = await context.OfficeSpendings.Where(x => x.CouncilorId == councilorId).FirstOrDefaultAsync();
+    OfficeSpendingResponse? officeSpendingsForCouncilor;
+
+    if (requestMonth is not null && requestYear is not null)
+    {
+        officeSpendingsForCouncilor = await context.OfficeSpendings
+            .Where(x => x.CouncilorId == councilorId && x.Month.Month == requestMonth && x.Month.Year == requestYear)
+            .Select(x => x.ToResponse())
+            .FirstOrDefaultAsync();
+    }
+    else
+    {
+        officeSpendingsForCouncilor = await context.OfficeSpendings.
+            Where(x => x.CouncilorId == councilorId)
+            .OrderByDescending(x => x.Month)
+            .Select(x => x.ToResponse())
+            .FirstOrDefaultAsync();
+    }
 
     if (officeSpendingsForCouncilor is null)
         return Results.NoContent();
 
-    return Results.Ok(officeSpendingsForCouncilor.ToResponse());
+    return Results.Ok(officeSpendingsForCouncilor);
 })
 .WithTags("Despesas de Gabinete");
 #endregion
