@@ -170,14 +170,39 @@ app.MapGet("/office-spendings/{councilor_id}", async (PostgresDbContext context,
 #endregion
 
 #region Attendences Domain
-app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, [FromRoute(Name = "councilor_id")] Guid councilorId) =>
+app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, 
+    [FromRoute(Name = "councilor_id")] Guid councilorId,
+    [FromQuery] int? requestYear,
+    [FromQuery] int? requestMonth) =>
 {
-    var attendencesForCouncilor = await context.Attendences.Where(x => x.CouncilorId == councilorId).FirstOrDefaultAsync();
+    IEnumerable<AttendenceResponse> attendences = [];
 
-    if (attendencesForCouncilor is null)
+    if (requestMonth is not null && requestYear is not null)
+    {
+        attendences = await context.Attendences
+            .Where(x => x.CouncilorId == councilorId && x.Month.Month == requestMonth && x.Month.Year == requestYear)
+            .OrderBy(x => x.Month.Day)
+            .Select(x => x.ToResponse())
+            .ToListAsync();
+    }
+    else
+    {
+        int lastMonth = await context.Attendences
+            .OrderByDescending(x => x.Month)
+            .Select(x => x.Month.Month)
+            .FirstOrDefaultAsync();
+
+        attendences = await context.Attendences.
+            Where(x => x.CouncilorId == councilorId && x.Month.Month == lastMonth)
+            .OrderBy(x => x.Month.Day)
+            .Select(x => x.ToResponse())
+            .ToListAsync();
+    }
+
+    if (!attendences.Any())
         return Results.NoContent();
 
-    return Results.Ok(attendencesForCouncilor.ToResponse());
+    return Results.Ok(attendences);
 })
 .WithTags("Presenças de sessões extraordinárias e ordinárias");
 #endregion

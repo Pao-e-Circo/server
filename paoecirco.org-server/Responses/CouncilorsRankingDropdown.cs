@@ -6,7 +6,8 @@
     }
     public class CouncilorsRankingDropdownItem
     {
-        public DateOnly Date { get; set; }
+        public int Year { get; set; }
+        public int Month { get; set; }
         public string Label { get; set; }
 
         private readonly Dictionary<int, string> MonthsLabels = new()
@@ -28,7 +29,8 @@
 
         public CouncilorsRankingDropdownItem(DateOnly date)
         {
-            Date = date;
+            Year = date.Year;
+            Month = date.Month;
             Label = $"{MonthsLabels[date.Month]} de {date.Year}";
         }
     }
