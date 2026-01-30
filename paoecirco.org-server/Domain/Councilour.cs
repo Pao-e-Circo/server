@@ -1,4 +1,5 @@
 ﻿using paoecirco.org_server.Responses;
+using paoecirco.org_server.Responses.Councilor;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace paoecirco.org_server.Domain
@@ -23,8 +24,5 @@ namespace paoecirco.org_server.Domain
 
         public CounciloursResponse ToResponse() 
             => new(Id, Name, Phone, Email, PhotoUrl, Party);
-
-        public CouncilorHome ToCouncilorHome(decimal officeExpenseThisMonth)
-            => new() { Name = Name, Phone = Phone, PhotoUrl = PhotoUrl, PoliticalParty = Party, OfficeExpenseThisMonth = officeExpenseThisMonth };
     }
 }

@@ -1,4 +1,5 @@
-﻿using paoecirco.org_server.Responses;
+﻿using paoecirco.org_server.Responses.OfficeSpending;
+using paoecirco.org_server.Utils;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace paoecirco.org_server.Domain
@@ -28,8 +29,14 @@ namespace paoecirco.org_server.Domain
         public decimal Gasoline { get; init; }
         public required Councilour Councilor { get; init; }
 
-        public OfficeSpendingResponse ToResponse()
+        public OfficeSpendingByIdResponse ToOfficeByIdResponse()
             => new(Id, CouncilorId, Month, Materials, MobilePhone, FixedPhone, Paper, AirlineTickets, HotelRate, Gasoline);
+
+        /// <summary>
+        /// Needs the <see cref="Attendence.Councilor"/> navigation object included.
+        /// </summary>
+        public AllOfficeSpendingsResponse ToAllOfficeSpendingsResponse()
+            => new(Id, CouncilorId, Councilor.Name, Councilor.Party, TotalSpent(), Materials, MobilePhone, FixedPhone, Paper, AirlineTickets, HotelRate, Gasoline, Month, ConvertDateToDateLabel.Convert(Month));
 
         internal decimal TotalSpent() 
             => Materials + MobilePhone + FixedPhone + Paper + AirlineTickets + HotelRate + Gasoline;

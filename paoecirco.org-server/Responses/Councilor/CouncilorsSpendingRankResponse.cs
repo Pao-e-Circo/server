@@ -1,4 +1,4 @@
-﻿namespace paoecirco.org_server.Responses
+﻿namespace paoecirco.org_server.Responses.Councilor
 {
     public record CouncilorsSpendingRankResponse(Guid Id,
         string Name,

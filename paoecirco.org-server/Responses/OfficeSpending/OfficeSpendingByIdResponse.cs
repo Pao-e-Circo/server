@@ -1,6 +1,6 @@
-﻿namespace paoecirco.org_server.Responses
+﻿namespace paoecirco.org_server.Responses.OfficeSpending
 {
-    public record OfficeSpendingResponse(Guid Id,
+    public record OfficeSpendingByIdResponse(Guid Id,
         Guid CouncilorId,
         DateOnly Month,
         decimal Materials,

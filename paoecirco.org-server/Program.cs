@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
-using paoecirco.org_server.Responses;
+using paoecirco.org_server.Domain;
+using paoecirco.org_server.Responses.Attendence;
+using paoecirco.org_server.Responses.Councilor;
+using paoecirco.org_server.Responses.OfficeSpending;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,7 +73,11 @@ app.MapGet("/councilors", async (PostgresDbContext context) =>
     var councilours = await context.Councilours.ToListAsync();
     return Results.Ok(councilours.Select(x => x.ToResponse()));
 })
-.WithTags("Vereadores");
+.WithTags("Vereadores")
+.WithSummary("Consulta todos os vereadores cadastrados")
+.WithDescription("""
+- Retorna 204 se não houver registros.
+""");
 
 app.MapGet("/councilors/{id}", async (PostgresDbContext context, [FromRoute] Guid id) =>
 {
@@ -82,107 +88,102 @@ app.MapGet("/councilors/{id}", async (PostgresDbContext context, [FromRoute] Gui
 
     return Results.Ok(councilour.ToResponse());
 })
-.WithTags("Vereadores");
-
-app.MapGet("/councilors:spending-rank", async (PostgresDbContext context) =>
-{
-    int lastMonthProcessed = await context.Attendences
-        .OrderByDescending(x => x.Month)
-        .Select(x => x.Month.Month)
-        .FirstOrDefaultAsync();
-
-    var lastMonthSpending = await context.OfficeSpendings
-        .Where(x => x.Month.Month == lastMonthProcessed)
-        .Include(x => x.Councilor)
-        .ToListAsync();
-
-    var first = lastMonthSpending.OrderBy(x => x.TotalSpent()).First();
-
-    var councilorsWithSameFirstPlaceValue = lastMonthSpending.Where(x => x.TotalSpent() == first.TotalSpent());
-
-    var last = lastMonthSpending.OrderByDescending(x => x.TotalSpent()).First();
-
-    List<CouncilorsSpendingRankResponse> response = [];
-
-    foreach (var i in councilorsWithSameFirstPlaceValue)
-    {
-        response.Add(new(i.Councilor.Id,
-            i.Councilor.Name,
-            i.Councilor.Phone,
-            i.Councilor.Email,
-            i.Councilor.PhotoUrl,
-            i.Councilor.Party,
-            i.TotalSpent(),
-            Winner: true));
-    }
-
-    response.Add(new(last.Councilor.Id,
-            last.Councilor.Name,
-            last.Councilor.Phone,
-            last.Councilor.Email,
-            last.Councilor.PhotoUrl,
-            last.Councilor.Party,
-            last.TotalSpent(),
-            Winner: false));
-
-    return Results.Ok(response);
-})
-.WithTags("Vereadores");
+.WithTags("Vereadores")
+.WithSummary("Consulta o vereador especificado")
+.WithDescription("""
+- Retorna 204 se não houver registros.
+""");
 #endregion
 
 #region OfficeSpending Domain
-app.MapGet("/office-spendings", async (PostgresDbContext context) =>
-{
-    var officeSpendings = await context.OfficeSpendings.ToListAsync();
-    return Results.Ok(officeSpendings.Select(x => x.ToResponse()));
-})
-.WithTags("Despesas de Gabinete");
-
 app.MapGet("/office-spendings/{councilor_id}", async (PostgresDbContext context,
     [FromRoute(Name = "councilor_id")] Guid councilorId,
-    [FromQuery] int? requestYear,
-    [FromQuery] int? requestMonth) =>
+    [FromQuery] int? year,
+    [FromQuery] int? month) =>
 {
-    OfficeSpendingResponse? officeSpendingsForCouncilor;
+    OfficeSpendingByIdResponse? response;
 
-    if (requestMonth is not null && requestYear is not null)
+    if (month is not null && year is not null)
     {
-        officeSpendingsForCouncilor = await context.OfficeSpendings
-            .Where(x => x.CouncilorId == councilorId && x.Month.Month == requestMonth && x.Month.Year == requestYear)
-            .Select(x => x.ToResponse())
+        response = await context.OfficeSpendings
+            .Where(x => x.CouncilorId == councilorId && x.Month.Month == month && x.Month.Year == year)
+            .Select(x => x.ToOfficeByIdResponse())
             .FirstOrDefaultAsync();
     }
     else
     {
-        officeSpendingsForCouncilor = await context.OfficeSpendings.
+        response = await context.OfficeSpendings.
             Where(x => x.CouncilorId == councilorId)
             .OrderByDescending(x => x.Month)
-            .Select(x => x.ToResponse())
+            .Select(x => x.ToOfficeByIdResponse())
             .FirstOrDefaultAsync();
     }
 
-    if (officeSpendingsForCouncilor is null)
+    if (response is null)
         return Results.NoContent();
 
-    return Results.Ok(officeSpendingsForCouncilor);
+    return Results.Ok(response);
 })
-.WithTags("Despesas de Gabinete");
+.WithTags("Despesas de Gabinete")
+.WithSummary("Consulta o gasto de gabinete do vereador especificado")
+.WithDescription("""
+- Retorna 204 se não houver registros.
+""");
+
+app.MapGet("/office-spendings", async (PostgresDbContext context, [FromQuery] int? year, [FromQuery] int? month) =>
+{
+    IList<OfficeSpending> officeSpending = [];
+
+    if (month is not null && year is not null)
+    {
+        officeSpending = await context.OfficeSpendings
+            .Where(x => x.Month.Month == month && x.Month.Year == year)
+            .Include(x => x.Councilor)
+            .ToListAsync();
+    }
+    else
+    {
+        int lastMonth = await context.OfficeSpendings
+            .OrderByDescending(x => x.Month)
+            .Select(x => x.Month.Month)
+            .FirstOrDefaultAsync();
+
+        officeSpending = await context.OfficeSpendings
+            .Where(x => x.Month.Month == lastMonth)
+            .Include(x => x.Councilor)
+            .ToListAsync();
+    }
+
+    if (officeSpending is null)
+        return Results.NoContent();
+
+    return Results.Ok(officeSpending
+        .OrderBy(x => x.TotalSpent())
+        .Select(x => x.ToAllOfficeSpendingsResponse())
+    );
+})
+.WithTags("Despesas de Gabinete")
+.WithSummary("Consulta o gasto de gabinete de todos os vereadores")
+.WithDescription("""
+Retorna os gastos de gabinete de todos os vereadores, ordenado pelos vereadores que mais menos gastaram.
+- Retorna 204 se não houver registros.
+""");
 #endregion
 
 #region Attendences Domain
 app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context, 
     [FromRoute(Name = "councilor_id")] Guid councilorId,
-    [FromQuery] int? requestYear,
-    [FromQuery] int? requestMonth) =>
+    [FromQuery] int? year,
+    [FromQuery] int? month) =>
 {
     IEnumerable<AttendenceResponse> attendences = [];
 
-    if (requestMonth is not null && requestYear is not null)
+    if (month is not null && year is not null)
     {
         attendences = await context.Attendences
-            .Where(x => x.CouncilorId == councilorId && x.Month.Month == requestMonth && x.Month.Year == requestYear)
+            .Where(x => x.CouncilorId == councilorId && x.Month.Month == month && x.Month.Year == year)
             .OrderBy(x => x.Month.Day)
-            .Select(x => x.ToResponse())
+            .Select(x => x.ToAttendenceResponse())
             .ToListAsync();
     }
     else
@@ -195,7 +196,7 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context,
         attendences = await context.Attendences.
             Where(x => x.CouncilorId == councilorId && x.Month.Month == lastMonth)
             .OrderBy(x => x.Month.Day)
-            .Select(x => x.ToResponse())
+            .Select(x => x.ToAttendenceResponse())
             .ToListAsync();
     }
 
@@ -204,163 +205,65 @@ app.MapGet("attendences/{councilor_id}", async (PostgresDbContext context,
 
     return Results.Ok(attendences);
 })
-.WithTags("Presenças de sessões extraordinárias e ordinárias");
-#endregion
+.WithTags("Presenças de sessões extraordinárias e ordinárias")
+.WithSummary("Consulta presenças do vereador específicado")
+.WithDescription("""
+- Retorna 204 se não houver registros.
+""");
 
-#region Other
-app.MapGet("home", async (PostgresDbContext context,
-    IMemoryCache cache,
-    [FromQuery] int? requestYear,
-    [FromQuery] int? requestMonth) =>
+app.MapGet("attendences", async (PostgresDbContext context, [FromQuery] int? year, [FromQuery] int? month) =>
 {
-    const string CachingKey = "HomeResponseCache";
-    int month = default;
+    IEnumerable<Attendence> attendences = [];
 
-    if (requestYear is not null && requestMonth is not null)
-        month = await context.Attendences
-            .Where(x => x.Month.Month == requestMonth && x.Month.Year == requestYear)
+    if (month is not null && year is not null)
+    {
+        attendences = await context.Attendences
+            .Where(x => x.Month.Month == month && x.Month.Year == year)
+            .OrderBy(x => x.Month.Day)
+            .Include(x => x.Councilor)
+            .ToListAsync();
+    }
+    else
+    {
+        int lastMonth = await context.Attendences
+            .OrderByDescending(x => x.Month)
             .Select(x => x.Month.Month)
             .FirstOrDefaultAsync();
-    else
-    {
-        cache.TryGetValue(CachingKey, out HomeResponse? cached);
 
-        if (cached is not null)
-            return Results.Ok(cached);
-
-        month = (await GetMonthForRankingProcessing(context, cache)).OrderByDescending(x => x.Month).Select(x => x.Month).First();
+        attendences = await context.Attendences.
+            Where(x => x.Month.Month == lastMonth)
+            .OrderBy(x => x.Month.Day)
+            .Include(x => x.Councilor)
+            .ToListAsync();
     }
 
-    if (month == default)
+    if (!attendences.Any())
         return Results.NoContent();
 
-    var allAttendences = await context.Attendences
-        .Where(x => x.Month.Month == month).Include(x => x.Councilor).ToListAsync();
+    var grouped = attendences.GroupBy(x => x.CouncilorId)
+        .Select(g => g.ToList())
+        .ToList();
 
-    var attendencesGroupedByCouncilors = allAttendences
-        .GroupBy(x => x.CouncilorId)
-        .Select(x => x.ToArray());
+    IList<AllAttendencesResponse> response = [];
 
-    var officeSpendingsThisMonth = (await context.OfficeSpendings
-        .Where(x => x.Month.Month == month).ToListAsync())
-        .GroupBy(x => x.CouncilorId)
-        .Select(x => x.ToArray());
-
-    Dictionary<Guid, (int Attendences, int Absences, decimal OfficeSpending)> variablesToCalculate = [];
-
-    foreach (var i in attendencesGroupedByCouncilors)
+    foreach (var x in grouped)
     {
-        if (variablesToCalculate.ContainsKey(i.First().CouncilorId))
-            continue;
-
-        Guid councilorId = i.First().CouncilorId;
-        int attendences = i.Where(x => x.Status == "PRESENTE").Count();
-        int absences = i.Where(x => x.Status != "PRESENTE").Count();
-
-        decimal officeSpending = 0;
-
-        foreach (var u in officeSpendingsThisMonth)
-        {
-            if (u.First().CouncilorId != councilorId)
-                continue;
-
-            officeSpending = u.Sum(x => x.TotalSpent());
-            break;
-        }
-
-        variablesToCalculate.Add(councilorId, (attendences, absences, officeSpending));
+        AllAttendencesResponse attendenceResponse = x.First().ToAllAttendencesResponse(
+            totalAttendences: x.Count(a => a.Status == "PRESENTE"),
+            totalAbsences: x.Count(a => a.Status == "AUSENTE"),
+            totalJustified: x.Count(a => a.Status == "Justificado")
+        );
+        response.Add(attendenceResponse);
     }
 
-    var councilors = attendencesGroupedByCouncilors.Select(x => x.First().Councilor);
-
-    IEnumerable<CouncilorHome> ranked = variablesToCalculate
-        .Rank(councilors)
-        .Select(x => x.ToCouncilorHome(x.OfficeSpendings.Sum(x => x.TotalSpent())));
-
-    HomeResponse response = new()
-    {
-        MonthHighlight = new()
-        {
-            TheColeest = ranked.First(),
-            TheSpender = ranked.ElementAt(ranked.Count() - 1)
-        },
-        Rank = ranked
-    };
-
-    cache.Set(CachingKey, response, TimeSpan.FromHours(6));
-
-    return Results.Ok(response);
+    return Results.Ok(response.OrderByDescending(x => x.TotalAttendences));
 })
-.WithTags("Destaques do mês");
-
-app.MapGet("/councilors:ranking-dropdown", async (PostgresDbContext context, IMemoryCache cache) =>
-{
-    var dates = await GetMonthForRankingProcessing(context, cache);
-
-    CouncilorsRankingDropdown response = new()
-    {
-        Items = dates
-            .OrderByDescending(x => x)
-            .Select(dateOnly => new CouncilorsRankingDropdownItem(dateOnly))
-            .ToList()
-    };
-
-    return Results.Ok(response);
-})
-.WithTags("Destaques do mês");
-#endregion
-
-#region Services methods
-async Task<IList<DateOnly>> GetMonthForRankingProcessing(PostgresDbContext context, IMemoryCache cache)
-{
-    const string CachingKey = "MonthsForRankingProcessing";
-
-    cache.TryGetValue(CachingKey, out IList<DateOnly>? cachedMonths);
-    if (cachedMonths is not null) return cachedMonths;
-
-    int lastYear = DateTime.UtcNow.Year - 1;
-
-    var attendencesProcessedThisYear = await context.Attendences
-        .Where(x => x.Month.Year == lastYear)
-        .Select(x => x.Month.Month)
-        .Distinct()
-        .OrderBy(x => x)
-        .ToListAsync();
-
-    var officesSpendingsProcessedThisYear = await context.OfficeSpendings
-        .Where(x => x.Month.Year == lastYear)
-        .Select(x => x.Month.Month)
-        .Distinct()
-        .OrderBy(x => x)
-        .ToListAsync();
-
-    // Pode acontecer de ter meses processados nas sessões, mas não nos gastos de gabinete - e vice versa.
-    bool hasMoreAttendencesThanSpendings = attendencesProcessedThisYear.Count > officesSpendingsProcessedThisYear.Count;
-    IList<DateOnly> dates = [];
-
-    if (hasMoreAttendencesThanSpendings)
-    {
-        dates = await context.OfficeSpendings
-            .Where(x => x.Month.Year == lastYear)
-            .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
-            .Distinct()
-            .OrderBy(x => x)
-            .ToListAsync();
-    }
-    else
-    {
-        dates = await context.Attendences
-            .Where(x => x.Month.Year == lastYear)
-            .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
-            .Distinct()
-            .OrderBy(x => x)
-            .ToListAsync();
-    }
-
-    cache.Set(CachingKey, dates, TimeSpan.FromHours(12));
-
-    return dates;
-}
+.WithTags("Presenças de sessões extraordinárias e ordinárias")
+.WithSummary("Consulta o total de presenças, ausências e justificados de um vereador de um determinado mês.")
+.WithDescription("""
+Retorna as presenças de todos os vereadores, ordenado pelos vereadores que mais possuem presenças.
+- Retorna 204 se não houver registros.
+""");
 #endregion
 
 app.Run();
