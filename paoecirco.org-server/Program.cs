@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
 using paoecirco.org_server.Domain;
 using paoecirco.org_server.Responses.Attendence;
 using paoecirco.org_server.Responses.Councilor;
 using paoecirco.org_server.Responses.OfficeSpending;
+using paoecirco.org_server.Utils;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -168,6 +170,26 @@ app.MapGet("/office-spendings", async (PostgresDbContext context, [FromQuery] in
 Retorna os gastos de gabinete de todos os vereadores, ordenado pelos vereadores que mais menos gastaram.
 - Retorna 204 se não houver registros.
 """);
+
+app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context) =>
+{
+    IEnumerable<DateOnly> dates = await context.OfficeSpendings
+        .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
+        .Distinct()
+        .ToListAsync();
+
+    if (!dates.Any())
+        return Results.NoContent();
+
+    return Results.Ok(dates
+        .OrderBy(x => x)
+        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+})
+.WithTags("Despesas de Gabinete")
+.WithSummary("Retorna as datas disponíveis para filtro")
+.WithDescription("""
+- Retorna 204 se não houver registros.
+""");
 #endregion
 
 #region Attendences Domain
@@ -262,6 +284,26 @@ app.MapGet("attendences", async (PostgresDbContext context, [FromQuery] int? yea
 .WithSummary("Consulta o total de presenças, ausências e justificados de um vereador de um determinado mês.")
 .WithDescription("""
 Retorna as presenças de todos os vereadores, ordenado pelos vereadores que mais possuem presenças.
+- Retorna 204 se não houver registros.
+""");
+
+app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context) =>
+{
+    IEnumerable<DateOnly> dates = await context.Attendences
+        .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
+        .Distinct()
+        .ToListAsync();
+
+    if (!dates.Any())
+        return Results.NoContent();
+
+    return Results.Ok(dates
+        .OrderBy(x => x)
+        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+})
+.WithTags("Presenças de sessões extraordinárias e ordinárias")
+.WithSummary("Retorna as datas disponíveis para filtro")
+.WithDescription("""
 - Retorna 204 se não houver registros.
 """);
 #endregion
