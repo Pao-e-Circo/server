@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
 using paoecirco.org_server.Domain;
+using paoecirco.org_server.Responses;
 using paoecirco.org_server.Responses.Attendence;
-using paoecirco.org_server.Responses.Councilor;
 using paoecirco.org_server.Responses.OfficeSpending;
 using paoecirco.org_server.Utils;
 
@@ -32,6 +31,7 @@ builder.Services.AddDbContext<PostgresDbContext>(options => options.UseNpgsql(
         );
     }
 ));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -51,7 +51,7 @@ app.UseCors("FrontPolicy");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 app.UseSwagger(c =>
@@ -181,9 +181,26 @@ app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context)
     if (!dates.Any())
         return Results.NoContent();
 
-    return Results.Ok(dates
-        .OrderBy(x => x)
-        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+    IList<DropdownResponse> response = [];
+
+    var years = dates.Select(x => x.Year).Distinct();
+
+    foreach (var year in years)
+    {
+        var datesOfYear = dates.Where(x => x.Year == year);
+
+        response.Add(new DropdownResponse
+        {
+            Year = year,
+            Dates = datesOfYear.OrderBy(x => x.Month).Select(x => new DateResponse
+            {
+                Date = x,
+                Label = ConvertDateToDateLabel.Convert(x)
+            })
+        });
+    }
+
+    return Results.Ok(response);
 })
 .WithTags("Despesas de Gabinete")
 .WithSummary("Retorna as datas disponíveis para filtro")
@@ -297,9 +314,26 @@ app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context) =>
     if (!dates.Any())
         return Results.NoContent();
 
-    return Results.Ok(dates
-        .OrderBy(x => x)
-        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+    IList<DropdownResponse> response = [];
+
+    var years = dates.Select(x => x.Year).Distinct();
+
+    foreach (var year in years)
+    {
+        var datesOfYear = dates.Where(x => x.Year == year);
+
+        response.Add(new DropdownResponse
+        {
+            Year = year,
+            Dates = datesOfYear.OrderBy(x => x.Month).Select(x => new DateResponse
+            {
+                Date = x,
+                Label = ConvertDateToDateLabel.Convert(x)
+            })
+        });
+    }
+
+    return Results.Ok(response);
 })
 .WithTags("Presenças de sessões extraordinárias e ordinárias")
 .WithSummary("Retorna as datas disponíveis para filtro")
