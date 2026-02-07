@@ -14,10 +14,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontPolicy", policy =>
     {
-        policy
-            .WithOrigins("https://www.paoecirco.org")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.WithOrigins("https://www.paoecirco.org").AllowAnyHeader().AllowAnyMethod();
+        } 
+        else
+        {
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        }
     });
 });
 
@@ -44,6 +48,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddMemoryCache();
+
+
 
 var app = builder.Build();
 app.UseCors("FrontPolicy");
