@@ -1,5 +1,4 @@
-﻿using paoecirco.org_server.Responses;
-using paoecirco.org_server.Responses.Councilor;
+﻿using paoecirco.org_server.Responses.Councilor;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace paoecirco.org_server.Domain

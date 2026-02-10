@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
 using paoecirco.org_server.Domain;
+using paoecirco.org_server.Responses;
 using paoecirco.org_server.Responses.Attendence;
 using paoecirco.org_server.Responses.OfficeSpending;
 using paoecirco.org_server.Utils;
@@ -14,10 +15,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontPolicy", policy =>
     {
-        policy
-            .WithOrigins("https://www.paoecirco.org")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        if (builder.Environment.IsProduction())
+        {
+            policy.WithOrigins("https://www.paoecirco.org").AllowAnyHeader().AllowAnyMethod();
+        } 
+        else
+        {
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        }
     });
 });
 
@@ -31,6 +36,7 @@ builder.Services.AddDbContext<PostgresDbContext>(options => options.UseNpgsql(
         );
     }
 ));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -43,6 +49,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddMemoryCache();
+
+
 
 var app = builder.Build();
 app.UseCors("FrontPolicy");
@@ -148,8 +156,13 @@ app.MapGet("/office-spendings", async (PostgresDbContext context, [FromQuery] in
             .Select(x => x.Month.Month)
             .FirstOrDefaultAsync();
 
+        int lastYear = await context.OfficeSpendings
+            .OrderByDescending(x => x.Month)
+            .Select(x => x.Month.Year)
+            .FirstOrDefaultAsync();
+
         officeSpending = await context.OfficeSpendings
-            .Where(x => x.Month.Month == lastMonth)
+            .Where(x => x.Month.Month == lastMonth && x.Month.Year == lastYear)
             .Include(x => x.Councilor)
             .ToListAsync();
     }
@@ -169,8 +182,13 @@ Retorna os gastos de gabinete de todos os vereadores, ordenado pelos vereadores 
 - Retorna 204 se não houver registros.
 """);
 
-app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context) =>
+app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context, IMemoryCache cache) =>
 {
+    if (cache.TryGetValue<IList<DropdownResponse>>("office-spending-dropdown-filter", out var cachedResponse))
+    {
+        return Results.Ok(cachedResponse);
+    }
+
     IEnumerable<DateOnly> dates = await context.OfficeSpendings
         .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
         .Distinct()
@@ -179,9 +197,28 @@ app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context)
     if (!dates.Any())
         return Results.NoContent();
 
-    return Results.Ok(dates
-        .OrderBy(x => x)
-        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+    IList<DropdownResponse> response = [];
+
+    var years = dates.Select(x => x.Year).Distinct();
+
+    foreach (var year in years)
+    {
+        var datesOfYear = dates.Where(x => x.Year == year);
+
+        response.Add(new DropdownResponse
+        {
+            Year = year,
+            Dates = datesOfYear.OrderBy(x => x.Month).Select(x => new DateResponse
+            {
+                Date = x,
+                Label = ConvertDateToDateLabel.Convert(x)
+            })
+        });
+    }
+
+    cache.Set("office-spending-dropdown-filter", response, new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromDays(1)));
+
+    return Results.Ok(response);
 })
 .WithTags("Despesas de Gabinete")
 .WithSummary("Retorna as datas disponíveis para filtro")
@@ -301,8 +338,13 @@ app.MapGet("attendences", async (PostgresDbContext context, [FromQuery] int? yea
             .Select(x => x.Month.Month)
             .FirstOrDefaultAsync();
 
+        int lastYear = await context.OfficeSpendings
+            .OrderByDescending(x => x.Month)
+            .Select(x => x.Month.Year)
+            .FirstOrDefaultAsync();
+
         attendences = await context.Attendences.
-            Where(x => x.Month.Month == lastMonth)
+            Where(x => x.Month.Month == lastMonth && x.Month.Year == lastYear)
             .OrderBy(x => x.Month.Day)
             .Include(x => x.Councilor)
             .ToListAsync();
@@ -336,8 +378,13 @@ Retorna as presenças de todos os vereadores, ordenado pelos vereadores que mais 
 - Retorna 204 se não houver registros.
 """);
 
-app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context) =>
+app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context, IMemoryCache cache) =>
 {
+    if (cache.TryGetValue<IList<DropdownResponse>>("attendences-dropdown-filter", out var cachedResponse))
+    {
+        return Results.Ok(cachedResponse);
+    }
+
     IEnumerable<DateOnly> dates = await context.Attendences
         .Select(x => new DateOnly(x.Month.Year, x.Month.Month, 1))
         .Distinct()
@@ -346,9 +393,28 @@ app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context) =>
     if (!dates.Any())
         return Results.NoContent();
 
-    return Results.Ok(dates
-        .OrderBy(x => x)
-        .Select(x => new { date = x, label = ConvertDateToDateLabel.Convert(x) }));
+    IList<DropdownResponse> response = [];
+
+    var years = dates.Select(x => x.Year).Distinct();
+
+    foreach (var year in years)
+    {
+        var datesOfYear = dates.Where(x => x.Year == year);
+
+        response.Add(new DropdownResponse
+        {
+            Year = year,
+            Dates = datesOfYear.OrderBy(x => x.Month).Select(x => new DateResponse
+            {
+                Date = x,
+                Label = ConvertDateToDateLabel.Convert(x)
+            })
+        });
+    }
+
+    cache.Set("attendences-dropdown-filter", response, new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromDays(1)));
+
+    return Results.Ok(response);
 })
 .WithTags("Presenças de sessões extraordinárias e ordinárias")
 .WithSummary("Retorna as datas disponíveis para filtro")
