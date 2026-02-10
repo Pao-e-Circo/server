@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.OpenApi;
 using paoecirco.org_server;
 using paoecirco.org_server.Domain;
 using paoecirco.org_server.Responses.Attendence;
-using paoecirco.org_server.Responses.Councilor;
 using paoecirco.org_server.Responses.OfficeSpending;
 using paoecirco.org_server.Utils;
 
@@ -67,7 +65,6 @@ app.UseSwaggerUI(c =>
 
 app.MapGet("/health", () => Results.Ok("Healthy!!! :)"))
 .WithTags("Health");
-
 
 #region Councilors Domain
 app.MapGet("/councilors", async (PostgresDbContext context) =>
@@ -190,6 +187,46 @@ app.MapGet("office-spendings/filter-dropdown", async (PostgresDbContext context)
 .WithDescription("""
 - Retorna 204 se não houver registros.
 """);
+
+app.MapGet("office-spendings:total", async (PostgresDbContext context, [FromQuery] int? since) =>
+{
+    IEnumerable<OfficeSpending[]> officeSpendings = (await context.OfficeSpendings
+        .Where(x => x.Month.Year >= since)
+        .Include(x => x.Councilor)
+        .GroupBy(x => x.CouncilorId)
+        .ToListAsync())
+        .Select(g => g.ToArray());
+
+    IList<OfficeSpendingTotalResponse> response = [];
+
+    // would creating a HashMap for O(1) access be better here? maybe, but since the number of councilors is small, it doesn't matter that much for now
+
+    foreach (var officeSpendingsForCouncilor in officeSpendings)
+    {
+        decimal totalSpent = officeSpendingsForCouncilor.Sum(x => x.TotalSpent());
+
+        response.Add(new OfficeSpendingTotalResponse(
+            CouncilorName: officeSpendingsForCouncilor.First().Councilor.Name,
+            CouncilorParty: officeSpendingsForCouncilor.First().Councilor.Party,
+            TotalSpent: totalSpent,
+            TotalMaterials: officeSpendingsForCouncilor.Sum(x => x.Materials),
+            TotalMobilePhone: officeSpendingsForCouncilor.Sum(x => x.MobilePhone),
+            FixedPhone: officeSpendingsForCouncilor.Sum(x => x.FixedPhone),
+            TotalPaper: officeSpendingsForCouncilor.Sum(x => x.Paper),
+            TotalAirlineTickets: officeSpendingsForCouncilor.Sum(x => x.AirlineTickets),
+            TotalHotelRate: officeSpendingsForCouncilor.Sum(x => x.HotelRate),
+            TotalGasoline: officeSpendingsForCouncilor.Sum(x => x.Gasoline)
+        ));
+    }
+
+    return Results.Ok(response.OrderByDescending(x => x.TotalSpent));
+})
+.WithTags("Despesas de Gabinete")
+.WithSummary("Retorna o total de Despeda de Gabinete desde o ano filtrado.")
+.WithDescription("""
+- `year`: o ano para fazer o "desde".
+- Retorna 204 se não houver registros.
+""");
 #endregion
 
 #region Attendences Domain
@@ -304,6 +341,39 @@ app.MapGet("attendences/filter-dropdown", async (PostgresDbContext context) =>
 .WithTags("Presenças de sessões extraordinárias e ordinárias")
 .WithSummary("Retorna as datas disponíveis para filtro")
 .WithDescription("""
+- Retorna 204 se não houver registros.
+""");
+
+app.MapGet("attendences:total", async (PostgresDbContext context, [FromQuery] int? since) =>
+{
+    IEnumerable<Attendence[]> attendences = (await context.Attendences
+        .Where(x => x.Month.Year >= since)
+        .Include(x => x.Councilor)
+        .GroupBy(x => x.CouncilorId)
+        .ToListAsync())
+        .Select(g => g.ToArray());
+
+    IList<AttendencesTotalResponse> response = [];
+
+    // would creating a HashMap for O(1) access be better here? maybe, but since the number of councilors is small, it doesn't matter that much for now
+
+    foreach (var attendencesForCouncilor in attendences)
+    {
+        response.Add(new AttendencesTotalResponse(
+            CouncilorName: attendencesForCouncilor.First().Councilor.Name,
+            CouncilorParty: attendencesForCouncilor.First().Councilor.Party,
+            TotalAttendences: attendencesForCouncilor.Count(a => a.Status == "PRESENTE"),
+            TotalAbsences: attendencesForCouncilor.Count(a => a.Status == "AUSENTE"),
+            TotalJustified: attendencesForCouncilor.Count(a => a.Status == "Justificado")
+        ));
+    }
+
+    return Results.Ok(response.OrderByDescending(x => x.TotalJustified)); // esses caras justificam mais do que faltam!
+})
+.WithTags("Presenças de sessões extraordinárias e ordinárias")
+.WithSummary("Retorna o total de presenças, faltas e justificativas desde o ano filtrado.")
+.WithDescription("""
+- `year`: o ano para fazer o "desde".
 - Retorna 204 se não houver registros.
 """);
 #endregion
